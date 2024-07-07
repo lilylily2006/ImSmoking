@@ -19,7 +19,7 @@ app.get('/quickbooksAuth', (req, res) => {
     jwt.sign({ id: 'some-shop-id' }, JWT_SECRET, { expiresIn: "1h" })
   );
 
-  const authUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${QUICKBOOKS_CLIENT_ID}&redirect_uri=${VERCEL_URL}/quickbooksCallback&response_type=code&scope=${QUICKBOOKS_SCOPES}&state=${encodedString}`;
+  const authUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${QUICKBOOKS_CLIENT_ID}&redirect_uri=${encodeURIComponent(VERCEL_URL)}/quickbooksCallback&response_type=code&scope=${encodeURIComponent(QUICKBOOKS_SCOPES)}&state=${encodedString}`;
 
   res.redirect(authUrl);
 });
@@ -29,15 +29,22 @@ app.get('/quickbooksCallback', async (req, res) => {
   const { JWT_SECRET, QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, VERCEL_URL } = process.env;
 
   try {
-    const tokenData = await axios.post("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+    const tokenResponse = await axios.post("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
       grant_type: "authorization_code",
       code,
       redirect_uri: `${VERCEL_URL}/quickbooksCallback`,
       client_id: QUICKBOOKS_CLIENT_ID,
       client_secret: QUICKBOOKS_CLIENT_SECRET
+    }, {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
     });
 
+    const tokenData = tokenResponse.data;
+
     // Store tokenData in your database or session
+    console.log('Authorization successful', tokenData);
     res.status(200).send('Authorization successful');
   } catch (error) {
     console.error('Error getting access token:', error.response.data);
@@ -48,5 +55,3 @@ app.get('/quickbooksCallback', async (req, res) => {
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
-
-module.exports = app;
