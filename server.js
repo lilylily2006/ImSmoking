@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const uuid = require('uuid');
 const session = require('express-session');
+const MongoStore = require('connect-mongodb-session')(session);
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
@@ -11,13 +12,6 @@ const clientId = process.env.QUICKBOOKS_CLIENT_ID;
 const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
 const redirectUri = `${process.env.RENDER_URL}/callback`;
 const baseUrl = 'https://quickbooks.api.intuit.com';
-
-// Middleware to handle session
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: true
-}));
 
 // MongoDB setup
 const uri = process.env.MONGODB_URI;
@@ -36,6 +30,20 @@ connectToMongo();
 
 const db = client.db('quickbooks');
 const tokensCollection = db.collection('tokens');
+
+// Configure MongoDB session store
+const store = new MongoStore({
+  uri: uri,
+  collection: 'sessions'
+});
+
+// Middleware to handle session
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: true,
+  store: store
+}));
 
 // Function to get access token
 async function getAccessToken(authCode) {
