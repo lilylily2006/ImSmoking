@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const uuid = require('uuid');
 const session = require('express-session');
-const moment = require('moment');
+const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -14,10 +14,28 @@ const baseUrl = 'https://quickbooks.api.intuit.com';
 
 // Middleware to handle session
 app.use(session({
-    secret: ImSmokingqwerty,
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true
 }));
+
+// MongoDB setup
+const uri = process.env.MONGODB_URI;
+const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+
+async function connectToMongo() {
+    try {
+        await client.connect();
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('Failed to connect to MongoDB', err);
+    }
+}
+
+connectToMongo();
+
+const db = client.db('quickbooks');
+const tokensCollection = db.collection('tokens');
 
 // Function to get access token
 async function getAccessToken(authCode) {
@@ -43,11 +61,9 @@ async function getAccessToken(authCode) {
     }
 }
 
-// Function to get transaction list for the last 2 days
+// Function to get transaction list
 async function getTransactionList(accessToken, realmId) {
-    const startDate = moment().subtract(2, 'days').format('YYYY-MM-DD');
-    const endDate = moment().format('YYYY-MM-DD');
-    const url = `${baseUrl}/v3/company/${realmId}/reports/TransactionList?start_date=${startDate}&end_date=${endDate}`;
+    const url = `${baseUrl}/v3/company/${realmId}/reports/TransactionList?start_date=${getTwoDaysAgo()}&end_date=${getToday()}`;
     const headers = {
         "Authorization": `Bearer ${accessToken}`,
         "Accept": "application/json"
@@ -63,6 +79,18 @@ async function getTransactionList(accessToken, realmId) {
         console.error('Error fetching transaction list:', error.response.data);
         throw new Error('Error fetching transaction list');
     }
+}
+
+// Helper functions to get date ranges
+function getToday() {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+}
+
+function getTwoDaysAgo() {
+    const today = new Date();
+    today.setDate(today.getDate() - 2);
+    return today.toISOString().split('T')[0];
 }
 
 // Route to initiate OAuth2 flow
@@ -90,9 +118,16 @@ app.get('/callback', async (req, res) => {
 
     try {
         const tokenData = await getAccessToken(authCode);
-        req.session.accessToken = tokenData.access_token;
-        req.session.realmId = realmId;
-        res.send('Authorization successful. Now you can fetch transactions.');
+        console.log('Tokens received:', tokenData);
+
+        // Store tokens and realmId in MongoDB
+        await tokensCollection.updateOne(
+            { realmId },
+            { $set: { accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, realmId } },
+            { upsert: true }
+        );
+
+        res.send('Authorization successful.');
     } catch (error) {
         console.error('Error in callback:', error.message);
         res.status(400).send(`Error: ${error.message}`);
@@ -100,21 +135,19 @@ app.get('/callback', async (req, res) => {
 });
 
 // Endpoint to fetch transactions
-app.get('/fetchTransactions', async (req, res) => {
-    const accessToken = req.session.accessToken;
-    const realmId = req.session.realmId;
-
-    if (!accessToken || !realmId) {
-        return res.status(400).send("Error: Not authenticated with QuickBooks");
-    }
-
+app.get('/fetch-transactions', async (req, res) => {
     try {
-        const transactions = await getTransactionList(accessToken, realmId);
-        console.log('Transactions fetched:', JSON.stringify(transactions, null, 2));
+        const tokenData = await tokensCollection.findOne();
+
+        if (!tokenData) {
+            return res.status(404).send('No token data found.');
+        }
+
+        const transactions = await getTransactionList(tokenData.accessToken, tokenData.realmId);
         res.json(transactions);
     } catch (error) {
         console.error('Error fetching transactions:', error.message);
-        res.status(500).send(`Error: ${error.message}`);
+        res.status(500).send('Error fetching transactions');
     }
 });
 
