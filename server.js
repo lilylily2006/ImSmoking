@@ -1,9 +1,9 @@
+const mongoose = require('mongoose');
 const express = require('express');
 const axios = require('axios');
 const uuid = require('uuid');
 const session = require('express-session');
 const MongoStore = require('connect-mongodb-session')(session);
-const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -13,13 +13,14 @@ const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
 const redirectUri = `${process.env.RENDER_URL}/callback`;
 const baseUrl = 'https://quickbooks.api.intuit.com';
 
-// MongoDB setup
 const uri = process.env.MONGODB_URI;
-const client = new MongoClient(uri);
 
 async function connectToMongo() {
     try {
-        await client.connect();
+        await mongoose.connect(uri, {
+            ssl: true,
+            tlsAllowInvalidCertificates: true, // Optional: Use only if facing certificate issues
+        });
         console.log('Connected to MongoDB');
     } catch (err) {
         console.error('Failed to connect to MongoDB', err);
@@ -28,21 +29,25 @@ async function connectToMongo() {
 
 connectToMongo();
 
-const db = client.db('quickbooks');
-const tokensCollection = db.collection('tokens');
+const tokensSchema = new mongoose.Schema({
+    accessToken: String,
+    refreshToken: String,
+    realmId: String,
+});
+const Tokens = mongoose.model('Tokens', tokensSchema);
 
 // Configure MongoDB session store
 const store = new MongoStore({
-  uri: uri,
-  collection: 'sessions'
+    uri: uri,
+    collection: 'sessions'
 });
 
 // Middleware to handle session
 app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true,
-  store: store
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true,
+    store: store
 }));
 
 // Function to get access token
@@ -129,7 +134,7 @@ app.get('/callback', async (req, res) => {
         console.log('Tokens received:', tokenData);
 
         // Store tokens and realmId in MongoDB
-        await tokensCollection.updateOne(
+        await Tokens.updateOne(
             { realmId },
             { $set: { accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, realmId } },
             { upsert: true }
@@ -145,7 +150,7 @@ app.get('/callback', async (req, res) => {
 // Endpoint to fetch transactions
 app.get('/fetch-transactions', async (req, res) => {
     try {
-        const tokenData = await tokensCollection.findOne();
+      const tokenData = await Tokens.findOne().sort({ _id: -1 }).exec();
 
         if (!tokenData) {
             return res.status(404).send('No token data found.');
