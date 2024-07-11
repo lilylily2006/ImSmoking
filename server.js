@@ -14,7 +14,7 @@ const baseUrl = 'https://quickbooks.api.intuit.com';
 
 // Middleware to handle session
 app.use(session({
-    secret: process.env.SESSION_SECRET,
+    secret: ImSmokingqwerty,
     resave: false,
     saveUninitialized: true
 }));
