@@ -20,7 +20,7 @@ app.use(session({
 }));
 
 // MongoDB setup
-const uri = process.env.MONGODB_URI;
+const uri = '8EivwFuu0KJF1j3fmDR6hiTwnHtYN1qfRtgLXTMMHyPPnB6S';
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
 async function connectToMongo() {
