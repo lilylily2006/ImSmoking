@@ -164,8 +164,8 @@ app.get('/fetch-transactions', async (req, res) => {
     }
 });
 
-app.post('/receive-sms', async (req, res) => {
-    const { from, message } = req.body;
+app.get('/receive-sms', async (req, res) => {
+    const { from, message } = req.query;
 
     try {
         const sms = new SMS({ from, message });
