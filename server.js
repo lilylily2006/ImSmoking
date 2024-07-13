@@ -164,6 +164,19 @@ app.get('/fetch-transactions', async (req, res) => {
     }
 });
 
+app.post('/receive-sms', async (req, res) => {
+    const { from, message } = req.body;
+
+    try {
+        const sms = new SMS({ from, message });
+        await sms.save();
+        res.status(200).send('SMS received and saved.');
+    } catch (error) {
+        console.error('Error saving SMS:', error.message);
+        res.status(500).send('Error saving SMS');
+    }
+});
+
 // Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
